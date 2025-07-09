@@ -1,32 +1,46 @@
 <div class="video-preview-container">
-  <div 
-    class="video-display"
-    (mousemove)="onMouseMove()"
-    (mouseleave)="onMouseLeave()"
-    (click)="togglePlayPause()">
+  <div class="video-display" 
+       (mousemove)="onMouseMove()" 
+       (mouseleave)="onMouseLeave()" 
+       (click)="togglePlayPause()">
     
     <!-- Video Content -->
     <div class="video-content">
       <div *ngIf="currentClip; else noContent" class="current-clip">
-        <video 
-          *ngIf="currentClip.type === 'video'"
-          #videoElement
-          [src]="currentClip.thumbnail"
-          [muted]="isMuted"
-          class="video-element">
+        <video *ngIf="currentClip.type === 'video'"
+               #videoElement
+               [src]="currentClip.thumbnail"
+               [muted]="isMuted"
+               [style.filter]="getVideoFilters()"
+               class="video-element">
         </video>
         
-        <img 
-          *ngIf="currentClip.type === 'image'"
-          [src]="currentClip.thumbnail"
-          [alt]="currentClip.name"
-          class="image-element">
+        <img *ngIf="currentClip.type === 'image'"
+             [src]="currentClip.thumbnail"
+             [alt]="currentClip.name"
+             [style.filter]="getVideoFilters()"
+             class="image-element">
         
         <div *ngIf="currentClip.type === 'audio'" class="audio-display">
           <div class="audio-icon">
             <i class="fas fa-music"></i>
           </div>
           <div class="audio-title">{{ currentClip.name }}</div>
+          <div class="audio-waveform">
+            <div *ngFor="let bar of [1,2,3,4,5,6,7,8]" 
+                 class="waveform-bar"
+                 [style.height.%]="getWaveformHeight(bar)"></div>
+          </div>
+        </div>
+
+        <!-- Text Overlays -->
+        <div *ngFor="let effect of getTextOverlays()" 
+             class="text-overlay"
+             [style.left.%]="effect.parameters.x"
+             [style.top.%]="effect.parameters.y"
+             [style.font-size.px]="effect.parameters.fontSize"
+             [style.color]="effect.parameters.color">
+          {{ effect.parameters.text }}
         </div>
       </div>
 
@@ -42,29 +56,23 @@
     </div>
 
     <!-- Play/Pause Overlay -->
-    <div 
-      *ngIf="!isPlaying && showControls" 
-      class="play-overlay">
+    <div *ngIf="!isPlaying && showControls" class="play-overlay">
       <div class="play-button">
         <i class="fas fa-play"></i>
       </div>
     </div>
 
     <!-- Controls Overlay -->
-    <div 
-      class="controls-overlay"
-      [class.visible]="showControls">
-      
+    <div class="controls-overlay" [class.visible]="showControls">
       <!-- Progress Bar -->
       <div class="progress-section">
-        <input 
-          type="range"
-          min="0"
-          [max]="duration"
-          [value]="currentTime"
-          step="0.1"
-          (input)="onSeekBarChange($event)"
-          class="progress-bar">
+        <input type="range"
+               min="0"
+               [max]="duration"
+               [value]="currentTime"
+               step="0.1"
+               (input)="onSeekBarChange($event)"
+               class="progress-bar">
         <div class="time-display">
           <span class="current-time">{{ formatTime(currentTime) }}</span>
           <span class="duration">{{ formatTime(duration) }}</span>
@@ -97,13 +105,12 @@
             <button class="control-btn" (click)="toggleMute(); $event.stopPropagation()">
               <i class="fas" [ngClass]="isMuted || volume === 0 ? 'fa-volume-mute' : 'fa-volume-up'"></i>
             </button>
-            <input 
-              type="range"
-              min="0"
-              max="100"
-              [value]="isMuted ? 0 : volume"
-              (input)="onVolumeChange($event)"
-              class="volume-slider">
+            <input type="range"
+                   min="0"
+                   max="100"
+                   [value]="isMuted ? 0 : volume"
+                   (input)="onVolumeChange($event)"
+                   class="volume-slider">
           </div>
 
           <button class="control-btn" title="Settings">

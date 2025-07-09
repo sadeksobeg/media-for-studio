@@ -1,50 +1,35 @@
-import { Component, OnInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { Subject, takeUntil, combineLatest } from 'rxjs';
-import { VideoStudioService } from '../../services/video-studio.service';
-import { TimelineClip } from '../../interfaces/video-studio.interface';
+import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
+import { Subject, takeUntil } from 'rxjs';
+import { TimelineClip, Effect } from '../../interfaces/video-studio.interface';
 
 @Component({
   selector: 'app-video-preview',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
   templateUrl: './video-preview.component.html',
   styleUrls: ['./video-preview.component.scss']
 })
 export class VideoPreviewComponent implements OnInit, OnDestroy {
   @ViewChild('videoElement') videoElement!: ElementRef<HTMLVideoElement>;
 
-  clips: TimelineClip[] = [];
-  currentTime = 0;
-  duration = 120;
-  isPlaying = false;
-  volume = 75;
-  isMuted = false;
-  showControls = true;
+  @Input() clips: TimelineClip[] = [];
+  @Input() currentTime = 0;
+  @Input() duration = 120;
+  @Input() isPlaying = false;
+  @Input() volume = 75;
+
+  @Output() playToggle = new EventEmitter<void>();
+  @Output() seek = new EventEmitter<number>();
+  @Output() volumeChange = new EventEmitter<number>();
+  @Output() fullscreen = new EventEmitter<void>();
+
   currentClip: TimelineClip | null = null;
+  showControls = true;
+  isMuted = false;
 
   private destroy$ = new Subject<void>();
   private controlsTimeout: any;
 
-  constructor(private videoStudioService: VideoStudioService) {}
-
   ngOnInit(): void {
-    combineLatest([
-      this.videoStudioService.clips$,
-      this.videoStudioService.currentTime$,
-      this.videoStudioService.duration$,
-      this.videoStudioService.isPlaying$,
-      this.videoStudioService.volume$
-    ]).pipe(takeUntil(this.destroy$))
-      .subscribe(([clips, currentTime, duration, isPlaying, volume]) => {
-        this.clips = clips;
-        this.currentTime = currentTime;
-        this.duration = duration;
-        this.isPlaying = isPlaying;
-        this.volume = volume;
-        this.updateCurrentClip();
-      });
+    this.updateCurrentClip();
   }
 
   ngOnDestroy(): void {
@@ -55,6 +40,10 @@ export class VideoPreviewComponent implements OnInit, OnDestroy {
     }
   }
 
+  ngOnChanges(): void {
+    this.updateCurrentClip();
+  }
+
   updateCurrentClip(): void {
     this.currentClip = this.clips.find(clip => 
       this.currentTime >= clip.startTime && this.currentTime <= clip.endTime
@@ -62,62 +51,45 @@ export class VideoPreviewComponent implements OnInit, OnDestroy {
   }
 
   togglePlayPause(): void {
-    if (this.isPlaying) {
-      this.videoStudioService.pause();
-    } else {
-      this.videoStudioService.play();
-    }
-  }
-
-  stop(): void {
-    this.videoStudioService.stop();
-  }
-
-  seek(time: number): void {
-    this.videoStudioService.seek(time);
+    this.playToggle.emit();
   }
 
   onSeekBarChange(event: Event): void {
     const target = event.target as HTMLInputElement;
-    this.seek(parseFloat(target.value));
+    this.seek.emit(parseFloat(target.value));
   }
 
   onVolumeChange(event: Event): void {
     const target = event.target as HTMLInputElement;
     const newVolume = parseFloat(target.value);
-    this.videoStudioService.setVolume(newVolume);
+    this.volumeChange.emit(newVolume);
     this.isMuted = newVolume === 0;
   }
 
   toggleMute(): void {
     if (this.isMuted) {
-      this.videoStudioService.setVolume(this.volume || 75);
+      this.volumeChange.emit(this.volume || 75);
       this.isMuted = false;
     } else {
-      this.videoStudioService.setVolume(0);
+      this.volumeChange.emit(0);
       this.isMuted = true;
     }
   }
 
   skipBackward(): void {
-    this.seek(Math.max(0, this.currentTime - 10));
+    this.seek.emit(Math.max(0, this.currentTime - 10));
   }
 
   skipForward(): void {
-    this.seek(Math.min(this.duration, this.currentTime + 10));
+    this.seek.emit(Math.min(this.duration, this.currentTime + 10));
   }
 
   goToStart(): void {
-    this.seek(0);
+    this.seek.emit(0);
   }
 
   toggleFullscreen(): void {
-    const element = document.documentElement;
-    if (document.fullscreenElement) {
-      document.exitFullscreen();
-    } else {
-      element.requestFullscreen();
-    }
+    this.fullscreen.emit();
   }
 
   onMouseMove(): void {
@@ -142,7 +114,69 @@ export class VideoPreviewComponent implements OnInit, OnDestroy {
   }
 
   formatTime(seconds: number): string {
-    return this.videoStudioService.formatTime(seconds);
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+
+  getVideoFilters(): string {
+    if (!this.currentClip) return '';
+
+    const filters: string[] = [];
+    
+    this.currentClip.effects.forEach(effect => {
+      if (effect.type === 'filter') {
+        const params = effect.parameters;
+        
+        if (params.brightness !== undefined) {
+          filters.push(`brightness(${1 + params.brightness / 100})`);
+        }
+        if (params.contrast !== undefined) {
+          filters.push(`contrast(${1 + params.contrast / 100})`);
+        }
+        if (params.saturation !== undefined) {
+          filters.push(`saturate(${1 + params.saturation / 100})`);
+        }
+        if (params.blur !== undefined) {
+          filters.push(`blur(${params.blur}px)`);
+        }
+        if (params.colorFilter) {
+          switch (params.colorFilter) {
+            case 'sepia':
+              filters.push('sepia(100%)');
+              break;
+            case 'grayscale':
+              filters.push('grayscale(100%)');
+              break;
+            case 'vintage':
+              filters.push('sepia(50%) contrast(1.2) brightness(0.9)');
+              break;
+            case 'cool':
+              filters.push('hue-rotate(180deg)');
+              break;
+            case 'warm':
+              filters.push('hue-rotate(30deg) saturate(1.2)');
+              break;
+            case 'high-contrast':
+              filters.push('contrast(150%)');
+              break;
+          }
+        }
+      }
+    });
+
+    return filters.join(' ');
+  }
+
+  getTextOverlays(): Effect[] {
+    if (!this.currentClip) return [];
+    return this.currentClip.effects.filter(effect => effect.type === 'text');
+  }
+
+  getWaveformHeight(index: number): number {
+    // Simulate audio waveform with random heights
+    const baseHeight = 20 + (Math.sin(this.currentTime + index) * 30);
+    return Math.max(10, Math.min(90, baseHeight));
   }
 
   get progressPercentage(): number {
