@@ -1,0 +1,176 @@
+<div class="timeline-container">
+  <!-- Timeline Header -->
+  <div class="timeline-header">
+    <div class="header-content">
+      <h3>Timeline</h3>
+      <div class="timeline-controls">
+        <button class="btn btn-sm btn-outline" (click)="addVideoTrack()">
+          <i class="fas fa-plus"></i> Video Track
+        </button>
+        <button class="btn btn-sm btn-outline" (click)="addAudioTrack()">
+          <i class="fas fa-plus"></i> Audio Track
+        </button>
+      </div>
+    </div>
+
+    <!-- Zoom Controls -->
+    <div class="zoom-controls">
+      <button class="btn btn-icon" (click)="videoStudioService.setZoom(Math.max(0.1, zoom - 0.1))">
+        <i class="fas fa-minus"></i>
+      </button>
+      <input 
+        type="range" 
+        min="0.1" 
+        max="2" 
+        step="0.1" 
+        [value]="zoom"
+        (input)="onZoomChange($event)"
+        class="zoom-slider">
+      <button class="btn btn-icon" (click)="videoStudioService.setZoom(Math.min(2, zoom + 0.1))">
+        <i class="fas fa-plus"></i>
+      </button>
+      <span class="zoom-label">{{ (zoom * 100) | number:'1.0-0' }}%</span>
+    </div>
+  </div>
+
+  <!-- Timeline Content -->
+  <div class="timeline-content">
+    <!-- Track Headers -->
+    <div class="track-headers">
+      <div class="track-header-title">
+        <span>Tracks</span>
+      </div>
+      <div class="track-list">
+        <div 
+          *ngFor="let track of tracks; trackBy: trackByTrackId"
+          class="track-header"
+          [style.height.px]="track.height + 16">
+          <div class="track-info">
+            <div class="track-name">{{ track.name }}</div>
+            <div class="track-controls">
+              <button 
+                class="btn btn-icon btn-sm"
+                [class.active]="track.muted"
+                (click)="toggleTrackMute(track)"
+                title="Mute/Unmute">
+                <i class="fas" [ngClass]="track.muted ? 'fa-volume-mute' : 'fa-volume-up'"></i>
+              </button>
+              <button 
+                class="btn btn-icon btn-sm"
+                [class.active]="!track.visible"
+                (click)="toggleTrackVisibility(track)"
+                title="Show/Hide">
+                <i class="fas" [ngClass]="track.visible ? 'fa-eye' : 'fa-eye-slash'"></i>
+              </button>
+              <button 
+                class="btn btn-icon btn-sm"
+                [class.active]="track.locked"
+                (click)="toggleTrackLock(track)"
+                title="Lock/Unlock">
+                <i class="fas" [ngClass]="track.locked ? 'fa-lock' : 'fa-unlock'"></i>
+              </button>
+            </div>
+          </div>
+          
+          <!-- Audio Waveform Visualization -->
+          <div *ngIf="track.type === 'audio'" class="waveform">
+            <div *ngFor="let bar of [1,2,3,4,5,6,7,8]" class="waveform-bar"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Timeline Area -->
+    <div class="timeline-area">
+      <!-- Time Ruler -->
+      <div 
+        class="time-ruler"
+        [style.width.px]="Math.max(timelineWidth, 800)">
+        <div 
+          *ngFor="let time of timeMarkers"
+          class="time-marker"
+          [style.left.px]="time * pixelsPerSecond">
+          <div class="marker-line"></div>
+          <div class="marker-label">{{ formatTime(time) }}</div>
+        </div>
+      </div>
+
+      <!-- Timeline Tracks -->
+      <div 
+        #timelineContainer
+        class="timeline-tracks"
+        [style.width.px]="Math.max(timelineWidth, 800)"
+        (click)="onTimelineClick($event)"
+        cdkDropListGroup>
+        
+        <div 
+          *ngFor="let track of tracks; trackBy: trackByTrackId"
+          class="timeline-track"
+          [style.height.px]="track.height + 16"
+          cdkDropList
+          [id]="track.id"
+          [cdkDropListData]="getClipsForTrack(track.id)"
+          (cdkDropListDropped)="onClipDrop($event)">
+          
+          <!-- Track Clips -->
+          <div 
+            *ngFor="let clip of getClipsForTrack(track.id); trackBy: trackByClipId"
+            class="timeline-clip"
+            [ngStyle]="getClipStyle(clip)"
+            [style.background-color]="getClipColor(clip)"
+            [class.selected]="selectedClipId === clip.id"
+            [class.muted]="clip.muted"
+            (click)="selectClip(clip.id); $event.stopPropagation()"
+            cdkDrag
+            [cdkDragData]="clip">
+            
+            <div class="clip-content">
+              <div class="clip-header">
+                <span class="clip-name">{{ clip.name }}</span>
+                <div class="clip-actions" *ngIf="selectedClipId === clip.id">
+                  <button 
+                    class="btn btn-icon btn-xs"
+                    (click)="splitClip(clip.id); $event.stopPropagation()"
+                    title="Split">
+                    <i class="fas fa-cut"></i>
+                  </button>
+                  <button 
+                    class="btn btn-icon btn-xs"
+                    (click)="deleteClip(clip.id); $event.stopPropagation()"
+                    title="Delete">
+                    <i class="fas fa-trash"></i>
+                  </button>
+                </div>
+              </div>
+              
+              <!-- Video Thumbnail -->
+              <div *ngIf="clip.type === 'video' && clip.thumbnail" class="clip-thumbnail">
+                <img [src]="clip.thumbnail" [alt]="clip.name">
+              </div>
+              
+              <!-- Audio Waveform -->
+              <div *ngIf="clip.type === 'audio'" class="clip-waveform">
+                <div *ngFor="let bar of [1,2,3,4,5,6,7,8,9,10]" 
+                     class="waveform-bar" 
+                     [style.height.%]="Math.random() * 80 + 20"></div>
+              </div>
+              
+              <div class="clip-duration">{{ formatTime(clip.duration) }}</div>
+            </div>
+
+            <!-- Resize Handles -->
+            <div class="resize-handle left" *ngIf="selectedClipId === clip.id"></div>
+            <div class="resize-handle right" *ngIf="selectedClipId === clip.id"></div>
+          </div>
+        </div>
+
+        <!-- Playhead -->
+        <div 
+          class="playhead"
+          [style.left.px]="currentTime * pixelsPerSecond">
+          <div class="playhead-handle"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

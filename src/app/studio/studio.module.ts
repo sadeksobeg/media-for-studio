@@ -1,13 +1,14 @@
 import { NgModule } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { DragDropModule } from '@angular/cdk/drag-drop'; // Import DragDropModule
-import { MediaService } from '../proxy/medias/media.service'; // Import MediaService
+import { FormsModule } from '@angular/forms';
+import { DragDropModule } from '@angular/cdk/drag-drop';
 
 import { StudioRoutingModule } from './studio-routing.module';
 import { StudioComponent } from './studio.component';
-import { MediaBinComponent } from './media-bin/media-bin.component';
-import { StudioActionButtonComponent } from './studio-action-button/studio-action-button.component';
-
+import { MediaLibraryComponent } from './components/media-library/media-library.component';
+import { VideoTimelineComponent } from './components/video-timeline/video-timeline.component';
+import { VideoPreviewComponent } from './components/video-preview/video-preview.component';
+import { VideoStudioService } from './services/video-studio.service';
 
 @NgModule({
   declarations: [
@@ -15,13 +16,15 @@ import { StudioActionButtonComponent } from './studio-action-button/studio-actio
   ],
   imports: [
     CommonModule,
+    FormsModule,
     StudioRoutingModule,
-    StudioActionButtonComponent,
     DragDropModule,
-    MediaBinComponent // Move MediaBinComponent here
+    MediaLibraryComponent,
+    VideoTimelineComponent,
+    VideoPreviewComponent
   ],
   providers: [
-    MediaService
+    VideoStudioService
   ],
   exports: [
     StudioComponent

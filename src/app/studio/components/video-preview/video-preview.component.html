@@ -1,0 +1,130 @@
+<div class="video-preview-container">
+  <div 
+    class="video-display"
+    (mousemove)="onMouseMove()"
+    (mouseleave)="onMouseLeave()"
+    (click)="togglePlayPause()">
+    
+    <!-- Video Content -->
+    <div class="video-content">
+      <div *ngIf="currentClip; else noContent" class="current-clip">
+        <video 
+          *ngIf="currentClip.type === 'video'"
+          #videoElement
+          [src]="currentClip.thumbnail"
+          [muted]="isMuted"
+          class="video-element">
+        </video>
+        
+        <img 
+          *ngIf="currentClip.type === 'image'"
+          [src]="currentClip.thumbnail"
+          [alt]="currentClip.name"
+          class="image-element">
+        
+        <div *ngIf="currentClip.type === 'audio'" class="audio-display">
+          <div class="audio-icon">
+            <i class="fas fa-music"></i>
+          </div>
+          <div class="audio-title">{{ currentClip.name }}</div>
+        </div>
+      </div>
+
+      <ng-template #noContent>
+        <div class="no-content">
+          <div class="no-content-icon">
+            <i class="fas fa-film"></i>
+          </div>
+          <div class="no-content-title">No content at current time</div>
+          <div class="no-content-subtitle">Add clips to the timeline to preview</div>
+        </div>
+      </ng-template>
+    </div>
+
+    <!-- Play/Pause Overlay -->
+    <div 
+      *ngIf="!isPlaying && showControls" 
+      class="play-overlay">
+      <div class="play-button">
+        <i class="fas fa-play"></i>
+      </div>
+    </div>
+
+    <!-- Controls Overlay -->
+    <div 
+      class="controls-overlay"
+      [class.visible]="showControls">
+      
+      <!-- Progress Bar -->
+      <div class="progress-section">
+        <input 
+          type="range"
+          min="0"
+          [max]="duration"
+          [value]="currentTime"
+          step="0.1"
+          (input)="onSeekBarChange($event)"
+          class="progress-bar">
+        <div class="time-display">
+          <span class="current-time">{{ formatTime(currentTime) }}</span>
+          <span class="duration">{{ formatTime(duration) }}</span>
+        </div>
+      </div>
+
+      <!-- Control Buttons -->
+      <div class="controls-section">
+        <div class="left-controls">
+          <button class="control-btn" (click)="skipBackward(); $event.stopPropagation()" title="Skip back 10s">
+            <i class="fas fa-backward"></i>
+          </button>
+          
+          <button class="control-btn play-btn" (click)="togglePlayPause(); $event.stopPropagation()">
+            <i class="fas" [ngClass]="isPlaying ? 'fa-pause' : 'fa-play'"></i>
+          </button>
+
+          <button class="control-btn" (click)="skipForward(); $event.stopPropagation()" title="Skip forward 10s">
+            <i class="fas fa-forward"></i>
+          </button>
+
+          <button class="control-btn" (click)="goToStart(); $event.stopPropagation()" title="Go to start">
+            <i class="fas fa-step-backward"></i>
+          </button>
+        </div>
+
+        <div class="right-controls">
+          <!-- Volume Control -->
+          <div class="volume-control">
+            <button class="control-btn" (click)="toggleMute(); $event.stopPropagation()">
+              <i class="fas" [ngClass]="isMuted || volume === 0 ? 'fa-volume-mute' : 'fa-volume-up'"></i>
+            </button>
+            <input 
+              type="range"
+              min="0"
+              max="100"
+              [value]="isMuted ? 0 : volume"
+              (input)="onVolumeChange($event)"
+              class="volume-slider">
+          </div>
+
+          <button class="control-btn" title="Settings">
+            <i class="fas fa-cog"></i>
+          </button>
+
+          <button class="control-btn" (click)="toggleFullscreen(); $event.stopPropagation()" title="Fullscreen">
+            <i class="fas fa-expand"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Timeline Position Indicator -->
+    <div class="position-indicator">
+      {{ formatTime(currentTime) }} / {{ formatTime(duration) }}
+    </div>
+
+    <!-- Current Clip Info -->
+    <div *ngIf="currentClip" class="clip-info">
+      {{ currentClip.name }}
+    </div>
+  </div>
+</div>

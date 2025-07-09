@@ -1,0 +1,174 @@
+<div class="media-library-container">
+  <!-- Header -->
+  <div class="header">
+    <div class="title-section">
+      <h2>Media Library</h2>
+      <div class="view-controls">
+        <button 
+          class="btn btn-icon"
+          (click)="viewMode = viewMode === 'grid' ? 'list' : 'grid'"
+          [title]="viewMode === 'grid' ? 'List View' : 'Grid View'">
+          <i class="fas" [ngClass]="viewMode === 'grid' ? 'fa-list' : 'fa-th'"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Search -->
+    <div class="search-container">
+      <div class="search-input">
+        <i class="fas fa-search search-icon"></i>
+        <input
+          type="text"
+          placeholder="Search media..."
+          [(ngModel)]="searchTerm"
+          class="form-control">
+      </div>
+    </div>
+
+    <!-- Upload Area -->
+    <div 
+      class="upload-area"
+      [class.drag-over]="isDragOver"
+      (drop)="onDrop($event)"
+      (dragover)="onDragOver($event)"
+      (dragleave)="onDragLeave($event)">
+      <i class="fas fa-cloud-upload-alt upload-icon"></i>
+      <p class="upload-text">Drag & drop media files here</p>
+      <button 
+        class="btn btn-outline"
+        (click)="fileInput.nativeElement.click()">
+        Browse Files
+      </button>
+      <input
+        #fileInput
+        type="file"
+        multiple
+        accept="video/*,audio/*,image/*"
+        style="display: none"
+        (change)="onFileUpload($event.target?.files)">
+    </div>
+  </div>
+
+  <!-- Media Content -->
+  <div class="media-content" *ngIf="!isLoading">
+    <div *ngIf="filteredMedia.length === 0" class="empty-state">
+      <div class="empty-icon">
+        <i class="fas fa-photo-video"></i>
+      </div>
+      <div class="empty-text">
+        {{ searchTerm ? 'No media found matching your search.' : 'No media files yet. Upload some to get started!' }}
+      </div>
+    </div>
+
+    <div *ngIf="filteredMedia.length > 0" [ngClass]="viewMode === 'grid' ? 'media-grid' : 'media-list'">
+      <div 
+        *ngFor="let item of filteredMedia; trackBy: trackByMediaId"
+        class="media-item"
+        [class.grid-item]="viewMode === 'grid'"
+        [class.list-item]="viewMode === 'list'">
+        
+        <!-- Grid View -->
+        <div *ngIf="viewMode === 'grid'" class="media-card" (click)="selectMedia(item)">
+          <div class="media-thumbnail">
+            <img [src]="item.thumbnail" [alt]="item.name" />
+            <div class="media-overlay">
+              <button class="btn btn-icon" (click)="previewMedia(item); $event.stopPropagation()">
+                <i class="fas fa-play"></i>
+              </button>
+              <button class="btn btn-icon btn-danger" (click)="deleteMedia(item); $event.stopPropagation()">
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>
+            <div class="duration-badge">
+              {{ videoStudioService.formatTime(item.duration) }}
+            </div>
+          </div>
+          <div class="media-info">
+            <div class="media-name" [title]="item.name">{{ item.name }}</div>
+            <div class="media-details">
+              {{ item.type }} • {{ (item.size / 1024 / 1024) | number:'1.1-1' }} MB
+            </div>
+          </div>
+        </div>
+
+        <!-- List View -->
+        <div *ngIf="viewMode === 'list'" class="media-list-item" (click)="selectMedia(item)">
+          <div class="list-thumbnail">
+            <img [src]="item.thumbnail" [alt]="item.name" />
+          </div>
+          <div class="list-info">
+            <div class="list-name">{{ item.name }}</div>
+            <div class="list-details">
+              {{ videoStudioService.formatTime(item.duration) }} • {{ item.type }}
+            </div>
+          </div>
+          <div class="list-actions">
+            <button class="btn btn-icon" (click)="previewMedia(item); $event.stopPropagation()">
+              <i class="fas fa-play"></i>
+            </button>
+            <button class="btn btn-icon" (click)="deleteMedia(item); $event.stopPropagation()">
+              <i class="fas fa-trash"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading State -->
+  <div *ngIf="isLoading" class="loading-state">
+    <div class="spinner"></div>
+    <div>Loading media...</div>
+  </div>
+</div>
+
+<!-- Preview Modal -->
+<div *ngIf="selectedMedia" class="modal-overlay" (click)="closePreview()">
+  <div class="modal-content" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3>{{ selectedMedia.name }}</h3>
+      <button class="btn btn-icon" (click)="closePreview()">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="preview-container">
+        <video 
+          *ngIf="selectedMedia.type === 'video'"
+          [src]="selectedMedia.url"
+          controls
+          class="preview-media">
+        </video>
+        <img 
+          *ngIf="selectedMedia.type === 'image'"
+          [src]="selectedMedia.url"
+          [alt]="selectedMedia.name"
+          class="preview-media">
+        <div *ngIf="selectedMedia.type === 'audio'" class="audio-preview">
+          <div class="audio-icon">
+            <i class="fas fa-music"></i>
+          </div>
+          <audio [src]="selectedMedia.url" controls class="audio-controls"></audio>
+        </div>
+      </div>
+      <div class="media-metadata">
+        <div class="metadata-item">
+          <span class="label">Duration:</span>
+          <span class="value">{{ videoStudioService.formatTime(selectedMedia.duration) }}</span>
+        </div>
+        <div class="metadata-item">
+          <span class="label">Type:</span>
+          <span class="value">{{ selectedMedia.type }}</span>
+        </div>
+        <div class="metadata-item">
+          <span class="label">Size:</span>
+          <span class="value">{{ (selectedMedia.size / 1024 / 1024) | number:'1.2-2' }} MB</span>
+        </div>
+        <div class="metadata-item">
+          <span class="label">Created:</span>
+          <span class="value">{{ selectedMedia.createdAt | date:'short' }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

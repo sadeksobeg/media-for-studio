@@ -1,255 +1,322 @@
-import { Component, OnInit } from '@angular/core';
-import { CdkDragDrop, moveItemInArray, transferArrayItem } from '@angular/cdk/drag-drop';
-import { MediaService } from '../proxy/medias/media.service';
-import { MediaDto, CreateUpdateMediaDto } from '../proxy/medias/models';
-import { MediaBinComponent } from './media-bin/media-bin.component'; // Import MediaBinComponent
-
-// Define a simple interface for a video clip
-interface Clip {
-  id: string;
-  name: string;
-  type: 'video' | 'audio' | 'text' | 'effect';
-  startTime: number; // in seconds
-  endTime: number;   // in seconds
-  duration: number;  // in seconds
-  src?: string;      // URL for video/audio/image
-  effectType?: string; // For effect clips
-  track: number;     // Which track it belongs to
-  mediaId?: string; // Link to backend media ID
-}
+import { Component, OnInit, OnDestroy, HostListener } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { Subject, takeUntil, interval } from 'rxjs';
+import { VideoStudioService } from './services/video-studio.service';
+import { MediaLibraryComponent } from './components/media-library/media-library.component';
+import { VideoTimelineComponent } from './components/video-timeline/video-timeline.component';
+import { VideoPreviewComponent } from './components/video-preview/video-preview.component';
+import { ExportSettings } from './interfaces/video-studio.interface';
 
 @Component({
   selector: 'app-studio',
   standalone: false,
+  imports: [
+    CommonModule, 
+    FormsModule,
+    MediaLibraryComponent,
+    VideoTimelineComponent,
+    VideoPreviewComponent
+  ],
   templateUrl: './studio.component.html',
-  styleUrl: './studio.component.scss'
+  styleUrls: ['./studio.component.scss']
 })
-export class StudioComponent implements OnInit {
-  activeNavItem: string = 'effects';
-  isEffectsPanelExpanded: boolean = true;
-  showExportModal: boolean = false;
-  currentProjectName: string = 'My Awesome Video'; // Initial project name
-  currentProjectId: string; // Current project ID, will be a GUID
+export class StudioComponent implements OnInit, OnDestroy {
+  currentProjectName = 'Untitled Project';
+  isPlaying = false;
+  currentTime = 0;
+  duration = 120;
+  zoom = 1;
+  selectedClipId: string | null = null;
+  
+  // History for undo/redo
+  canUndo = false;
+  canRedo = false;
+  
+  // Export dialog
+  showExportDialog = false;
+  isExporting = false;
+  exportProgress = 0;
+  exportSettings: ExportSettings = {
+    format: 'mp4',
+    quality: 'high',
+    resolution: '1080p',
+    fps: 30
+  };
 
-  // Sample clips for the timeline
-  clips: Clip[] = [
-    { id: 'clip1', name: 'Retro Shake 3', type: 'effect', startTime: 0, endTime: 60, duration: 60, effectType: 'retro-shake-3', track: 0 },
-    { id: 'clip2', name: 'Video Clip 1', type: 'video', startTime: 30, endTime: 120, duration: 90, src: 'https://via.placeholder.com/100x50', track: 1 },
-    { id: 'clip3', name: 'Diamond', type: 'effect', startTime: 90, endTime: 180, duration: 90, effectType: 'diamond-effect', track: 2 },
-    { id: 'clip4', name: 'Play Day', type: 'effect', startTime: 150, endTime: 240, duration: 90, effectType: 'play-day-effect', track: 3 },
-  ];
+  private destroy$ = new Subject<void>();
+  private playbackInterval: any;
+  private exportInterval: any;
 
-  constructor(private mediaService: MediaService) {
-    this.currentProjectId = this.generateGuid(); // Initialize in constructor
-  }
+  constructor(private videoStudioService: VideoStudioService) {}
 
   ngOnInit(): void {
-    console.log('ngOnInit: currentProjectId before loading media:', this.currentProjectId);
-    this.loadProjectMedia(this.currentProjectId);
+    // Subscribe to service state
+    this.videoStudioService.isPlaying$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(isPlaying => {
+        this.isPlaying = isPlaying;
+        this.handlePlaybackChange();
+      });
+
+    this.videoStudioService.currentTime$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(currentTime => {
+        this.currentTime = currentTime;
+      });
+
+    this.videoStudioService.duration$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(duration => {
+        this.duration = duration;
+      });
+
+    this.videoStudioService.zoom$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(zoom => {
+        this.zoom = zoom;
+      });
   }
 
-  onMediaBinMediaSelected(media: MediaDto): void {
-    console.log('Media selected from media bin:', media);
-    // Handle media selection, e.g., add to timeline or preview
-  }
-
-  onMediaBinMediaDeleted(mediaId: string): void {
-    console.log('Media deleted from media bin:', mediaId);
-    this.clips = this.clips.filter(clip => clip.mediaId !== mediaId);
-  }
-
-  onMediaBinMediaEdited(media: MediaDto): void {
-    console.log('Media edited in media bin:', media);
-    const clipToUpdate = this.clips.find(clip => clip.mediaId === media.id);
-    if (clipToUpdate) {
-      clipToUpdate.name = media.title;
-      clipToUpdate.src = media.video || `https://via.placeholder.com/100x50?text=${media.title}`;
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+    if (this.playbackInterval) {
+      clearInterval(this.playbackInterval);
+    }
+    if (this.exportInterval) {
+      clearInterval(this.exportInterval);
     }
   }
 
-  onMediaBinMediaUploaded(media: MediaDto): void {
-    console.log('New media uploaded via media bin:', media);
-    const newClip: Clip = {
-      id: `clip-${media.id}`,
-      name: media.title || 'Untitled Media',
-      type: 'video',
-      startTime: 0,
-      endTime: 10,
-      duration: 10,
-      src: media.video || `https://via.placeholder.com/100x50?text=${media.title}`,
-      mediaId: media.id,
-      track: 1
-    };
-    this.clips.push(newClip);
-    this.clips.sort((a, b) => a.track - b.track || a.startTime - b.startTime);
-  }
+  // Keyboard shortcuts
+  @HostListener('document:keydown', ['$event'])
+  handleKeyboardEvent(event: KeyboardEvent) {
+    // Don't trigger shortcuts when typing in inputs
+    if (
+      event.target instanceof HTMLInputElement ||
+      event.target instanceof HTMLTextAreaElement ||
+      event.target instanceof HTMLSelectElement
+    ) {
+      return;
+    }
 
-  onNavClick(item: string): void {
-    this.activeNavItem = item;
-    if (item === 'effects') {
-      this.isEffectsPanelExpanded = !this.isEffectsPanelExpanded;
+    const { ctrlKey, metaKey, shiftKey, key } = event;
+    const isModifierPressed = ctrlKey || metaKey;
+
+    if (isModifierPressed) {
+      switch (key.toLowerCase()) {
+        case 's':
+          event.preventDefault();
+          this.saveProject();
+          break;
+        case 'n':
+          event.preventDefault();
+          this.newProject();
+          break;
+        case 'e':
+          event.preventDefault();
+          this.showExportDialog = true;
+          break;
+        case 'z':
+          event.preventDefault();
+          if (shiftKey) {
+            this.redo();
+          } else {
+            this.undo();
+          }
+          break;
+        case 'y':
+          event.preventDefault();
+          this.redo();
+          break;
+        case 'x':
+          event.preventDefault();
+          this.cutClip();
+          break;
+        case 'c':
+          event.preventDefault();
+          this.copyClip();
+          break;
+      }
     } else {
-      this.isEffectsPanelExpanded = false;
-    }
-    console.log(`Navigation item clicked: ${item}`);
-  }
-
-  onHeaderButtonClick(buttonName: string): void {
-    console.log(`Header button clicked: ${buttonName}`);
-    if (buttonName === 'export') {
-      this.showExportModal = true;
-    } else if (buttonName === 'undo') {
-      alert('Undo action triggered!');
-      // Implement undo logic here
-    } else if (buttonName === 'redo') {
-      alert('Redo action triggered!');
-      // Implement redo logic here
-    } else if (buttonName === 'new-project') {
-      this.createNewProject();
-    } else if (buttonName === 'save-project') {
-      this.saveProject();
+      switch (key) {
+        case ' ':
+          event.preventDefault();
+          this.togglePlayPause();
+          break;
+        case 'Delete':
+        case 'Backspace':
+          event.preventDefault();
+          this.deleteClip();
+          break;
+        case 's':
+          event.preventDefault();
+          this.splitClip();
+          break;
+      }
     }
   }
 
-  onPlayerControlClick(controlName: string): void {
-    console.log(`Player control clicked: ${controlName}`);
-    if (controlName === 'play') {
-      alert('Play/Pause video!');
-      // Implement play/pause logic
-    } else if (controlName === 'minus') {
-      alert('Zoom out timeline!');
-      // Implement timeline zoom out
-    } else if (controlName === 'plus') {
-      alert('Zoom in timeline!');
-      // Implement timeline zoom in
-    } else if (controlName === 'trash') {
-      alert('Delete selected clip!');
-      // Implement delete clip logic
+  private handlePlaybackChange(): void {
+    if (this.playbackInterval) {
+      clearInterval(this.playbackInterval);
+    }
+
+    if (this.isPlaying) {
+      this.playbackInterval = setInterval(() => {
+        const newTime = this.currentTime + 0.1;
+        if (newTime >= this.duration) {
+          this.videoStudioService.stop();
+        } else {
+          this.videoStudioService.seek(newTime);
+        }
+      }, 100);
     }
   }
 
-  closeExportModal(): void {
-    this.showExportModal = false;
-    console.log('Export modal closed.');
-  }
-
-  performExport(): void {
-    alert('Exporting video...');
-    this.showExportModal = false;
-    console.log('Export initiated.');
-  }
-
-  // Helper to filter clips by track for ngFor
-  clipsByTrack(trackNum: number): Clip[] {
-    return this.clips.filter(clip => clip.track === trackNum).sort((a, b) => a.startTime - b.startTime);
-  }
-
-  // Drag and Drop functionality for effects
-  drop(event: CdkDragDrop<Clip[]>) {
-    if (event.previousContainer === event.container) {
-      // Reordering within the same track (not implemented for clips yet, but good for future)
-      moveItemInArray(event.container.data, event.previousIndex, event.currentIndex);
+  // Playback controls
+  togglePlayPause(): void {
+    if (this.isPlaying) {
+      this.videoStudioService.pause();
     } else {
-      // Dropping an effect from the effects library onto a timeline track
-      const effectData = event.previousContainer.data[event.previousIndex];
-      const targetTrack = event.container.data as any; // The track number
-      
-      // Create a new clip for the dropped effect
-      const newClip: Clip = {
-        id: `effect-${Date.now()}`, // Unique ID
-        name: effectData.name,
-        type: 'effect',
-        startTime: 0, // Placeholder, ideally determined by drop position
-        endTime: 60,  // Placeholder duration
-        duration: 60,
-        effectType: effectData.effectType,
-        track: targetTrack // Assign to the target track
-      };
-
-      this.clips.push(newClip);
-      console.log(`Dropped effect: ${newClip.name} onto track ${newClip.track}`);
-      alert(`Applied effect: ${newClip.name} to track ${newClip.track}`);
-      // You might want to sort clips after adding a new one
-      this.clips.sort((a, b) => a.track - b.track || a.startTime - b.startTime);
+      this.videoStudioService.play();
     }
   }
 
-  // Project Management Functions
-  createNewProject(): void {
-    const newName = prompt('Enter new project name:', 'New Project');
-    if (newName) {
-      this.currentProjectName = newName;
-      this.currentProjectId = `project-${Date.now()}`; // Generate a new project ID
-      this.clips = []; // Clear existing clips for a new project
-      alert(`New project "${newName}" created!`);
-      console.log(`New project created: ${newName} with ID: ${this.currentProjectId}`);
+  stop(): void {
+    this.videoStudioService.stop();
+  }
+
+  // Project management
+  newProject(): void {
+    if (confirm('Are you sure you want to create a new project? Unsaved changes will be lost.')) {
+      this.videoStudioService.newProject();
+      this.currentProjectName = 'Untitled Project';
+      this.selectedClipId = null;
     }
   }
 
   saveProject(): void {
-    // In a real application, this would save `this.clips` and other project data
-    alert(`Project "${this.currentProjectName}" saved!`);
-    console.log(`Project saved: ${this.currentProjectName}`);
+    // Implement save logic
+    console.log('Saving project:', this.currentProjectName);
+    // You could integrate with your backend here
   }
 
+  // Edit operations
+  undo(): void {
+    // Implement undo logic
+    console.log('Undo operation');
+  }
 
-  // Load project media from backend
-  loadProjectMedia(projectId: string): void {
-    this.mediaService.getProjectMedias(projectId).subscribe({
-      next: (medias: MediaDto[]) => {
-        console.log(`Loaded ${medias.length} media items for project ${projectId}:`, medias);
-        // Convert MediaDto to Clip and add to clips array
-        const loadedClips: Clip[] = medias.map(media => ({
-          id: `clip-${media.id}`,
-          name: media.title || 'Untitled Media',
-          type: 'video', // Assuming all loaded are videos for now
-          startTime: 0, // Placeholder
-          endTime: 10,  // Placeholder
-          duration: 10, // Placeholder
-          src: `https://via.placeholder.com/100x50?text=${media.title}`, // Placeholder src
-          mediaId: media.id,
-          track: 1 // Default track
-        }));
-        this.clips = [...this.clips.filter(c => c.type !== 'video'), ...loadedClips]; // Keep effects, replace videos
-        this.clips.sort((a, b) => a.track - b.track || a.startTime - b.startTime);
-      },
-      error: (error) => {
-        console.error(`Failed to load media for project ${projectId}:`, error);
-        // Handle error, e.g., show a message to the user
+  redo(): void {
+    // Implement redo logic
+    console.log('Redo operation');
+  }
+
+  cutClip(): void {
+    if (this.selectedClipId) {
+      console.log('Cut clip:', this.selectedClipId);
+      // Implement cut logic
+    }
+  }
+
+  copyClip(): void {
+    if (this.selectedClipId) {
+      console.log('Copy clip:', this.selectedClipId);
+      // Implement copy logic
+    }
+  }
+
+  deleteClip(): void {
+    if (this.selectedClipId) {
+      this.videoStudioService.removeClip(this.selectedClipId);
+      this.selectedClipId = null;
+    }
+  }
+
+  splitClip(): void {
+    if (this.selectedClipId) {
+      this.videoStudioService.splitClip(this.selectedClipId, this.currentTime);
+    }
+  }
+
+  // View controls
+  zoomIn(): void {
+    this.videoStudioService.setZoom(Math.min(2, this.zoom + 0.1));
+  }
+
+  zoomOut(): void {
+    this.videoStudioService.setZoom(Math.max(0.1, this.zoom - 0.1));
+  }
+
+  // Export functionality
+  exportProject(): void {
+    this.isExporting = true;
+    this.exportProgress = 0;
+
+    // Simulate export progress
+    this.exportInterval = setInterval(() => {
+      this.exportProgress += Math.random() * 10;
+      if (this.exportProgress >= 100) {
+        this.exportProgress = 100;
+        clearInterval(this.exportInterval);
+        
+        setTimeout(() => {
+          this.isExporting = false;
+          this.showExportDialog = false;
+          this.exportProgress = 0;
+          
+          // In a real app, you would call your backend export service
+          this.videoStudioService.exportProject(this.exportSettings)
+            .pipe(takeUntil(this.destroy$))
+            .subscribe({
+              next: (result) => {
+                console.log('Export completed:', result);
+                alert('Video exported successfully!');
+              },
+              error: (error) => {
+                console.error('Export failed:', error);
+                alert('Export failed. Please try again.');
+              }
+            });
+        }, 500);
       }
-    });
+    }, 200);
   }
 
-  // Core Editing Tools Placeholders
-  cutClip(clipId: string, time: number): void {
-    console.log(`Cutting clip ${clipId} at ${time} seconds.`);
-    alert(`Cutting clip ${clipId} at ${time} seconds.`);
-    // Logic to split the clip into two
+  cancelExport(): void {
+    if (this.exportInterval) {
+      clearInterval(this.exportInterval);
+    }
+    this.isExporting = false;
+    this.exportProgress = 0;
+    this.showExportDialog = false;
   }
 
-  splitClip(clipId: string, time: number): void {
-    console.log(`Splitting clip ${clipId} at ${time} seconds.`);
-    alert(`Splitting clip ${clipId} at ${time} seconds.`);
-    // Logic to split the clip into two
+  getEstimatedFileSize(): string {
+    const bitrates = { low: 1, medium: 5, high: 10, ultra: 20 };
+    const resolutionMultipliers = { '720p': 1, '1080p': 2.25, '4k': 9 };
+    const fpsMultiplier = this.exportSettings.fps / 30;
+    
+    const baseBitrate = bitrates[this.exportSettings.quality];
+    const resolutionMultiplier = resolutionMultipliers[this.exportSettings.resolution];
+    const estimatedMB = (baseBitrate * resolutionMultiplier * fpsMultiplier * this.duration) / 8;
+    
+    return estimatedMB > 1024 
+      ? `${(estimatedMB / 1024).toFixed(1)} GB`
+      : `${estimatedMB.toFixed(0)} MB`;
   }
 
-  trimClip(clipId: string, newStartTime: number, newEndTime: number): void {
-    console.log(`Trimming clip ${clipId} from ${newStartTime} to ${newEndTime} seconds.`);
-    alert(`Trimming clip ${clipId} from ${newStartTime} to ${newEndTime} seconds.`);
-    // Logic to adjust clip start/end times
-  }
-
-  changeClipSpeed(clipId: string, speedMultiplier: number): void {
-    console.log(`Changing speed of clip ${clipId} to ${speedMultiplier}x.`);
-    alert(`Changing speed of clip ${clipId} to ${speedMultiplier}x.`);
-    // Logic to adjust clip playback speed
-  }
-  // Helper function to generate a GUID (Globally Unique Identifier)
-  private generateGuid(): string {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0,
-        v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
+  getEstimatedTime(): string {
+    const baseTime = this.duration * 0.5;
+    const qualityMultiplier = { low: 0.5, medium: 1, high: 1.5, ultra: 2.5 }[this.exportSettings.quality];
+    const resolutionMultiplier = { '720p': 1, '1080p': 2, '4k': 4 }[this.exportSettings.resolution];
+    
+    const estimatedSeconds = baseTime * qualityMultiplier * resolutionMultiplier;
+    const minutes = Math.floor(estimatedSeconds / 60);
+    const seconds = Math.floor(estimatedSeconds % 60);
+    
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   }
 }
