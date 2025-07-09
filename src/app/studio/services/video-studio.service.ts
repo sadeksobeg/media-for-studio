@@ -97,6 +97,7 @@ export class VideoStudioService {
   addClip(clip: TimelineClip): void {
     const currentClips = this.clipsSubject.value;
     this.clipsSubject.next([...currentClips, clip]);
+    this.updateDuration();
   }
 
   updateClip(updatedClip: TimelineClip): void {
@@ -104,11 +105,18 @@ export class VideoStudioService {
     this.clipsSubject.next(
       currentClips.map(clip => clip.id === updatedClip.id ? updatedClip : clip)
     );
+    this.updateDuration();
   }
 
   removeClip(clipId: string): void {
     const currentClips = this.clipsSubject.value;
     this.clipsSubject.next(currentClips.filter(clip => clip.id !== clipId));
+    this.updateDuration();
+  }
+
+  setClips(clips: TimelineClip[]): void {
+    this.clipsSubject.next(clips);
+    this.updateDuration();
   }
 
   splitClip(clipId: string, time: number): void {
@@ -136,6 +144,7 @@ export class VideoStudioService {
     this.clipsSubject.next(
       currentClips.filter(c => c.id !== clipId).concat([firstClip, secondClip])
     );
+    this.updateDuration();
   }
 
   // Track management
@@ -158,6 +167,11 @@ export class VideoStudioService {
     // Remove clips on this track
     const currentClips = this.clipsSubject.value;
     this.clipsSubject.next(currentClips.filter(clip => clip.trackId !== trackId));
+    this.updateDuration();
+  }
+
+  setTracks(tracks: Track[]): void {
+    this.tracksSubject.next(tracks);
   }
 
   // Playback controls
@@ -190,6 +204,40 @@ export class VideoStudioService {
     this.durationSubject.next(Math.max(1, duration));
   }
 
+  private updateDuration(): void {
+    const clips = this.clipsSubject.value;
+    if (clips.length === 0) {
+      this.setDuration(120); // Default duration
+      return;
+    }
+
+    const maxEndTime = Math.max(...clips.map(clip => clip.endTime));
+    this.setDuration(Math.max(maxEndTime, 120));
+  }
+
+  // Video effects and filters
+  applyEffect(clipId: string, effect: any): void {
+    const clip = this.clips.find(c => c.id === clipId);
+    if (clip) {
+      const updatedClip = {
+        ...clip,
+        effects: [...clip.effects, effect]
+      };
+      this.updateClip(updatedClip);
+    }
+  }
+
+  removeEffect(clipId: string, effectId: string): void {
+    const clip = this.clips.find(c => c.id === clipId);
+    if (clip) {
+      const updatedClip = {
+        ...clip,
+        effects: clip.effects.filter(e => e.id !== effectId)
+      };
+      this.updateClip(updatedClip);
+    }
+  }
+
   // Utility methods
   formatTime(seconds: number): string {
     const mins = Math.floor(seconds / 60);
@@ -212,6 +260,8 @@ export class VideoStudioService {
     this.currentTimeSubject.next(0);
     this.durationSubject.next(120);
     this.isPlayingSubject.next(false);
+    this.volumeSubject.next(75);
+    this.zoomSubject.next(1);
   }
 
   exportProject(settings: ExportSettings): Observable<any> {
@@ -224,5 +274,69 @@ export class VideoStudioService {
         observer.complete();
       }, 3000);
     });
+  }
+
+  // Advanced video processing methods
+  adjustBrightness(clipId: string, value: number): void {
+    this.applyEffect(clipId, {
+      id: this.generateId(),
+      name: 'Brightness',
+      type: 'filter',
+      parameters: { brightness: value }
+    });
+  }
+
+  adjustContrast(clipId: string, value: number): void {
+    this.applyEffect(clipId, {
+      id: this.generateId(),
+      name: 'Contrast',
+      type: 'filter',
+      parameters: { contrast: value }
+    });
+  }
+
+  adjustSaturation(clipId: string, value: number): void {
+    this.applyEffect(clipId, {
+      id: this.generateId(),
+      name: 'Saturation',
+      type: 'filter',
+      parameters: { saturation: value }
+    });
+  }
+
+  applyBlur(clipId: string, value: number): void {
+    this.applyEffect(clipId, {
+      id: this.generateId(),
+      name: 'Blur',
+      type: 'filter',
+      parameters: { blur: value }
+    });
+  }
+
+  applyColorFilter(clipId: string, filterType: string): void {
+    this.applyEffect(clipId, {
+      id: this.generateId(),
+      name: filterType,
+      type: 'filter',
+      parameters: { colorFilter: filterType }
+    });
+  }
+
+  addTransition(fromClipId: string, toClipId: string, transitionType: string, duration: number): void {
+    const transition = {
+      id: this.generateId(),
+      name: `${transitionType} Transition`,
+      type: 'transition',
+      parameters: {
+        transitionType,
+        duration,
+        fromClipId,
+        toClipId
+      }
+    };
+
+    // Apply transition to both clips
+    this.applyEffect(fromClipId, transition);
+    this.applyEffect(toClipId, transition);
   }
 }

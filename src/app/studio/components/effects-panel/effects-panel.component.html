@@ -1,0 +1,155 @@
+<div class="effects-panel">
+  <div class="panel-header">
+    <h3>
+      <i class="fas fa-magic"></i>
+      Effects & Filters
+    </h3>
+    <button class="btn btn-icon btn-sm" (click)="closePanel()">
+      <i class="fas fa-times"></i>
+    </button>
+  </div>
+
+  <div class="panel-content" *ngIf="selectedClip">
+    <!-- Color Adjustments -->
+    <div class="effect-section">
+      <h4>
+        <i class="fas fa-palette"></i>
+        Color Adjustments
+      </h4>
+      
+      <div class="effect-control">
+        <label>Brightness</label>
+        <div class="slider-container">
+          <input 
+            type="range" 
+            min="-100" 
+            max="100" 
+            [value]="getEffectValue('brightness')"
+            (input)="onBrightnessChange($event)"
+            class="effect-slider">
+          <span class="value-display">{{ getEffectValue('brightness') }}%</span>
+        </div>
+      </div>
+
+      <div class="effect-control">
+        <label>Contrast</label>
+        <div class="slider-container">
+          <input 
+            type="range" 
+            min="-100" 
+            max="100" 
+            [value]="getEffectValue('contrast')"
+            (input)="onContrastChange($event)"
+            class="effect-slider">
+          <span class="value-display">{{ getEffectValue('contrast') }}%</span>
+        </div>
+      </div>
+
+      <div class="effect-control">
+        <label>Saturation</label>
+        <div class="slider-container">
+          <input 
+            type="range" 
+            min="-100" 
+            max="100" 
+            [value]="getEffectValue('saturation')"
+            (input)="onSaturationChange($event)"
+            class="effect-slider">
+          <span class="value-display">{{ getEffectValue('saturation') }}%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Blur Effects -->
+    <div class="effect-section">
+      <h4>
+        <i class="fas fa-eye-dropper"></i>
+        Blur & Focus
+      </h4>
+      
+      <div class="effect-control">
+        <label>Blur</label>
+        <div class="slider-container">
+          <input 
+            type="range" 
+            min="0" 
+            max="20" 
+            [value]="getEffectValue('blur')"
+            (input)="onBlurChange($event)"
+            class="effect-slider">
+          <span class="value-display">{{ getEffectValue('blur') }}px</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Color Filters -->
+    <div class="effect-section">
+      <h4>
+        <i class="fas fa-filter"></i>
+        Color Filters
+      </h4>
+      
+      <div class="filter-grid">
+        <button 
+          *ngFor="let filter of colorFilters"
+          class="filter-btn"
+          [class.active]="hasColorFilter(filter.type)"
+          (click)="toggleColorFilter(filter.type)">
+          <div class="filter-preview" [ngStyle]="getFilterPreviewStyle(filter.type)"></div>
+          <span>{{ filter.name }}</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Applied Effects -->
+    <div class="effect-section" *ngIf="selectedClip.effects.length > 0">
+      <h4>
+        <i class="fas fa-list"></i>
+        Applied Effects
+      </h4>
+      
+      <div class="applied-effects">
+        <div 
+          *ngFor="let effect of selectedClip.effects"
+          class="applied-effect">
+          <div class="effect-info">
+            <i class="fas fa-magic"></i>
+            <span>{{ effect.name }}</span>
+          </div>
+          <button 
+            class="btn btn-icon btn-sm btn-danger"
+            (click)="removeEffect(effect.id)"
+            title="Remove Effect">
+            <i class="fas fa-trash"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Transitions -->
+    <div class="effect-section">
+      <h4>
+        <i class="fas fa-exchange-alt"></i>
+        Transitions
+      </h4>
+      
+      <div class="transition-grid">
+        <button 
+          *ngFor="let transition of transitions"
+          class="transition-btn"
+          (click)="applyTransition(transition.type)">
+          <i [class]="transition.icon"></i>
+          <span>{{ transition.name }}</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-content no-selection" *ngIf="!selectedClip">
+    <div class="no-selection-message">
+      <i class="fas fa-mouse-pointer"></i>
+      <h4>No Clip Selected</h4>
+      <p>Select a clip from the timeline to apply effects and filters.</p>
+    </div>
+  </div>
+</div>

@@ -7,7 +7,7 @@
         Video Studio Pro
       </h1>
       <div class="project-info">
-        <span class="project-name">{{ currentProjectName }}</span>
+        <span class="project-name">{{ currentProject?.title || 'Untitled Project' }}</span>
         <button class="btn btn-link btn-sm" (click)="newProject()">
           <i class="fas fa-plus"></i> New
         </button>
@@ -92,13 +92,13 @@
           title="Split (S)">
           <i class="fas fa-scissors"></i>
         </button>
-        <button class="btn btn-icon" title="Add Text (T)">
+        <button class="btn btn-icon" (click)="addTextOverlay()" title="Add Text (T)">
           <i class="fas fa-font"></i>
         </button>
-        <button class="btn btn-icon" title="Effects (E)">
+        <button class="btn btn-icon" (click)="openEffectsPanel()" title="Effects (E)">
           <i class="fas fa-magic"></i>
         </button>
-        <button class="btn btn-icon" title="Transitions">
+        <button class="btn btn-icon" (click)="openTransitionsPanel()" title="Transitions">
           <i class="fas fa-exchange-alt"></i>
         </button>
       </div>
@@ -122,20 +122,61 @@
   <div class="studio-content">
     <!-- Left Sidebar - Media Library -->
     <div class="sidebar-left">
-      <app-media-library></app-media-library>
+      <app-media-library
+        [mediaItems]="mediaItems"
+        [currentProjectId]="currentProject?.id || ''"
+        (mediaSelected)="onMediaSelected($event)"
+        (mediaDeleted)="onMediaDeleted($event)"
+        (mediaUploaded)="onMediaUploaded($event)">
+      </app-media-library>
     </div>
 
     <!-- Center - Video Preview and Timeline -->
     <div class="main-area">
       <!-- Video Preview -->
       <div class="preview-section">
-        <app-video-preview></app-video-preview>
+        <app-video-preview
+          [clips]="clips"
+          [currentTime]="currentTime"
+          [duration]="duration"
+          [isPlaying]="isPlaying"
+          [volume]="volume"
+          (playToggle)="togglePlayPause()"
+          (seek)="onSeek($event)"
+          (volumeChange)="onVolumeChange($event)"
+          (fullscreen)="toggleFullscreen()">
+        </app-video-preview>
       </div>
 
       <!-- Timeline -->
       <div class="timeline-section">
-        <app-video-timeline></app-video-timeline>
+        <app-video-timeline
+          [clips]="clips"
+          [tracks]="tracks"
+          [duration]="duration"
+          [currentTime]="currentTime"
+          [zoom]="zoom"
+          [selectedClipId]="selectedClipId"
+          (clipSelected)="onClipSelected($event)"
+          (clipUpdated)="onClipUpdated($event)"
+          (clipDeleted)="onClipDeleted($event)"
+          (clipSplit)="onClipSplit($event)"
+          (trackAdded)="onTrackAdded($event)"
+          (trackUpdated)="onTrackUpdated($event)"
+          (trackDeleted)="onTrackDeleted($event)"
+          (timelineSeek)="onSeek($event)"
+          (zoomChanged)="onZoomChanged($event)">
+        </app-video-timeline>
       </div>
+    </div>
+
+    <!-- Right Sidebar - Effects Panel -->
+    <div class="sidebar-right" *ngIf="showEffectsPanel">
+      <app-effects-panel
+        [selectedClip]="getSelectedClip()"
+        (effectApplied)="onEffectApplied($event)"
+        (effectRemoved)="onEffectRemoved($event)">
+      </app-effects-panel>
     </div>
   </div>
 </div>
@@ -234,6 +275,37 @@
 
     <div class="modal-footer" *ngIf="isExporting">
       <button class="btn btn-outline" (click)="cancelExport()">Cancel Export</button>
+    </div>
+  </div>
+</div>
+
+<!-- Text Overlay Dialog -->
+<div *ngIf="showTextDialog" class="modal-overlay" (click)="showTextDialog = false">
+  <div class="text-modal" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3>Add Text Overlay</h3>
+      <button class="btn btn-icon" (click)="showTextDialog = false">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Text</label>
+        <input type="text" [(ngModel)]="textOverlay.text" class="form-control" placeholder="Enter text...">
+      </div>
+      <div class="form-group">
+        <label>Font Size</label>
+        <input type="range" [(ngModel)]="textOverlay.fontSize" min="12" max="72" class="form-control">
+        <span>{{ textOverlay.fontSize }}px</span>
+      </div>
+      <div class="form-group">
+        <label>Color</label>
+        <input type="color" [(ngModel)]="textOverlay.color" class="form-control">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" (click)="showTextDialog = false">Cancel</button>
+      <button class="btn btn-primary" (click)="applyTextOverlay()">Add Text</button>
     </div>
   </div>
 </div>

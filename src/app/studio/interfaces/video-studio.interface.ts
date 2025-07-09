@@ -39,7 +39,7 @@ export interface Track {
 export interface Effect {
   id: string;
   name: string;
-  type: 'filter' | 'transition' | 'text';
+  type: 'filter' | 'transition' | 'text' | 'color' | 'blur' | 'brightness';
   parameters: Record<string, any>;
 }
 
@@ -63,4 +63,29 @@ export interface ExportSettings {
   quality: 'low' | 'medium' | 'high' | 'ultra';
   resolution: '720p' | '1080p' | '4k';
   fps: 24 | 30 | 60;
+}
+
+export interface TextOverlay {
+  text: string;
+  fontSize: number;
+  color: string;
+  x: number;
+  y: number;
+  duration: number;
+}
+
+export interface VideoFilter {
+  id: string;
+  name: string;
+  type: 'brightness' | 'contrast' | 'saturation' | 'blur' | 'sepia' | 'grayscale';
+  value: number;
+  enabled: boolean;
+}
+
+export interface Transition {
+  id: string;
+  name: string;
+  type: 'fade' | 'slide' | 'wipe' | 'dissolve';
+  duration: number;
+  direction?: 'left' | 'right' | 'up' | 'down';
 }
